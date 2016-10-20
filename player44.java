@@ -7,8 +7,8 @@ import java.util.Properties;
 
 public class player44 implements ContestSubmission
 {
-	Random rnd_;
-	ContestEvaluation evaluation_;
+    Random rnd_;
+    ContestEvaluation evaluation_;
     private int evaluations_limit_;
     private int total_population_;
     private double min_value_;
@@ -16,107 +16,118 @@ public class player44 implements ContestSubmission
     private int total_genes_;
     private double F_; //differential weight [0,2]
     private double CR_; //crossover probability [0,1]
-    private double[] best_individual;
-    private double best_fitness;
-    private int evals;
-	
-	public player44()
-	{
-		rnd_ = new Random();
-        total_population_ = 20;
-        max_value_ = Math.pow(5, 10);
+    public int evals;
+    private int stall_restart_divider_;
+    private int stall_minimum_;
+    private boolean random_restarts_;
+
+    public player44()
+    {
+        rnd_ = new Random();
+        total_population_ = 100;
+        max_value_ = 5.0;
         min_value_ = - max_value_;
         total_genes_ = 10;
-        F_ = 1.0;
-        CR_ = 0.5;
-        best_fitness = Double.NEGATIVE_INFINITY;
+        F_ = 0.5;
+        CR_ = 0.1;
         evals = 0;
+        stall_restart_divider_ = 500;
+        stall_minimum_ = 10;
+        random_restarts_ = true;
+    }
 
-	}
-	
-	public void setSeed(long seed)
-	{
-		// Set seed of algortihms random process
-		rnd_.setSeed(seed);
-	}
+    public void setSeed(long seed)
+    {
+        // Set seed of algortihms random process
+        rnd_.setSeed(seed);
+    }
 
-	public void setEvaluation(ContestEvaluation evaluation)
-	{
-		// Set evaluation problem used in the run
-		evaluation_ = evaluation;
-		
-		// Get evaluation properties
-		Properties props = evaluation.getProperties();
+    public void setEvaluation(ContestEvaluation evaluation)
+    {
+        // Set evaluation problem used in the run
+        evaluation_ = evaluation;
+
+        // Get evaluation properties
+        Properties props = evaluation.getProperties();
         // Get evaluation limit
         evaluations_limit_ = Integer.parseInt(props.getProperty("Evaluations"));
-		// Property keys depend on specific evaluation
-		// E.g. double param = Double.parseDouble(props.getProperty("property_name"));
+        // Property keys depend on specific evaluation
+        // E.g. double param = Double.parseDouble(props.getProperty("property_name"));
         boolean isMultimodal = Boolean.parseBoolean(props.getProperty("Multimodal"));
-        System.out.println("isMultimodal: " + isMultimodal);
+        //System.out.println("isMultimodal: " + isMultimodal);
         boolean hasStructure = Boolean.parseBoolean(props.getProperty("Regular"));
-        System.out.println("hasStructure: " + hasStructure);
+        //System.out.println("hasStructure: " + hasStructure);
         boolean isSeparable = Boolean.parseBoolean(props.getProperty("Separable"));
-        System.out.println("isSeparable: " + isSeparable);
+        //System.out.println("isSeparable: " + isSeparable);
 
-		// Do sth with property values, e.g. specify relevant settings of your algorithm
+        // Do sth with property values, e.g. specify relevant settings of your algorithm
         if(isMultimodal){
             // Do sth
         }else{
             // Do sth else
         }
     }
-    
-	public void run()
-	{
 
+    public void run()
+    {
         // init population
-        double population[][] = init_population();
-        // calculate fitness
-        double fitness[] = calculate_fitness(population);
-        //System.out.println("Fitness: " + Arrays.toString(fitness));
+        Individual population[] = init_population();
+        evals += total_population_;
+        //print_population(population);
+
         System.out.println(evaluation_.toString());
         System.out.println("Total evaluations: " + evaluations_limit_);
-        while(evals< evaluations_limit_){
+        while(evals < evaluations_limit_){
             population = differential_evolution(population);
+            evals++;
             if(evals % (evaluations_limit_/10) == 0){
-                System.out.println(evals + "/" + evaluations_limit_ + " Current best fitness: " + best_fitness);
+                System.out.println(evals + "/" + evaluations_limit_ + " Current best fitness: " + evaluation_.getFinalResult());
             }
         }
-        System.out.println("best fitness: " + best_fitness);
+        System.out.println("best fitness: " + evaluation_.getFinalResult());
         System.out.println(evaluation_.getFinalResult());
-        System.out.println("best individual: " + Arrays.toString(best_individual));
-        //System.out.println(Arrays.toString(calculate_fitness(population)));
+        //System.out.println("best individual: " + Arrays.toString(best_individual.getGenotype()));
+    }
 
-
-	}
-
-	public double[] calculate_fitness(double[][] population){
-        double[] fitness = new double[total_population_];
+    public void print_population(Individual[] population){
         for(int i = 0; i < total_population_; i++){
-            fitness[i] = (double) evaluation_.evaluate(population[i]);
-            evals++;
+            System.out.println(i + " " + Arrays.toString(population[i].getGenotype()) + ": " +population[i].getFitness());
         }
-        return fitness;
     }
 
 
-	public double[][] init_population(){
-        double parents[][] = new double[total_population_][total_genes_];
+    public Individual[] init_population(){
+        Individual population[] = new Individual[total_population_];
         for(int j = 0; j<total_population_; j++) {
-            for (int i = 0; i < total_genes_; i++) {
-                parents[j][i] = min_value_ + (max_value_ - min_value_) * this.rnd_.nextDouble();
-            }
+            population[j] = random_individual();
             //System.out.println("Initial population: " + Arrays.toString(parents[j]));
         }
-        return parents;
+        return population;
     }
 
-    public double[][] differential_evolution(double[][] population){
-        int min = 0;
+    public Individual random_individual(){
+        double[] genotype = new double[total_genes_];
+
+        for (int i = 0; i < total_genes_; i++) {
+            genotype[i] = min_value_ + (max_value_ - min_value_) * this.rnd_.nextDouble();
+        }
+        Individual individual = new Individual(genotype, this.evaluation_, this.evals);
+        return individual;
+    }
+
+
+    public Individual[] differential_evolution(Individual[] population){
         int max = total_population_;
 
         // The individual to be mutated
         int individual_x = rnd_.nextInt(max); // return int between 0 and total_population_
+
+        if(this.random_restarts_ == true && population[individual_x].getStall() >= evals/this.stall_restart_divider_ && population[individual_x].getStall() >= this.stall_minimum_){
+            population[individual_x] = random_individual();
+            System.out.println("New random individual created!" + evals/this.stall_restart_divider_);
+            return population;
+
+        }
 
         // The different parent/mutation individuals
         int individual_a = -1;
@@ -138,45 +149,39 @@ public class player44 implements ContestSubmission
 
         //System.out.println(gene_index);
 
-        double[] parent = population[individual_x];
-        double[] child = parent.clone();
+        Individual parent = population[individual_x];
+        Individual child = new Individual(parent.getGenotype().clone(), parent.getFitness(), this.evaluation_, this.evals);
 
+        double[] child_genotype = child.getGenotype();
         for(int i = 0; i < total_genes_; i++){
             if(i == gene_index || rnd_.nextDouble() < CR_ ){
-                child[i] = population[individual_a][i] + F_ *(population[individual_b][i] - population[individual_c][i]);
+                child_genotype[i] = population[individual_a].getGenotype()[i] + F_ *(population[individual_b].getGenotype()[i] - population[individual_c].getGenotype()[i]);
             }
         }
 
-        double parent_fitness = (double) evaluation_.evaluate(parent);
-        evals++;
-        //System.out.println("Evals: " + evals);
-        double child_fitness = (double) evaluation_.evaluate(child);
-        evals++;
+        child.calculate_fitness();
 
-
-        if(child_fitness > parent_fitness){
-            //System.out.println("+++++ Child is better than parent, child: " + child_fitness + " Parent: " + parent_fitness);
+        if(child.getFitness() > parent.getFitness()){
+            //System.out.println(evals + "+++++ Child is better than parent, child: " + child.getFitness() + " Parent: " + parent.getFitness());
             population[individual_x] = child;
         }else{
-            //System.out.println("----- Child is worse than parent, child: " + child_fitness + " Parent: " + parent_fitness);
+            parent.increaseStall();
+            //System.out.println("----- Child is worse than parent, child: " + child.getFitness() + " Parent: " + parent.getFitness() + " Stall: " + parent.getStall());
         }
 
-        if(child_fitness > best_fitness){
-            best_fitness = child_fitness;
-            best_individual = child;
-        }
-
-
+//        if(child.getFitness() > best_individual.getFitness()){
+//            best_individual = new Individual(child.getGenotype(), child.getFitness());
+//        }
 
         return population;
     }
 
-	//public static void main(String[] vars){
-	//	System.out.println("Running Evolutionary Algorithms!");
-	//	player44 player = new player44();
-    //    player.setEvaluation(new RastriginEvaluation());
-	//	player.run();
-	//}
+//    public static void main(String[] vars){
+//    	System.out.println("Running Evolutionary Algorithms!");
+//        player44 player = new player44();
+//        player.setEvaluation(new FletcherPowellEvaluation());
+//    	player.run();
+//    }
 }
 
 
